@@ -10,23 +10,34 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { DiscountModule } from './discount/discount.module';
 import { PriceModule } from './price/price.module';
 import { OrderModule } from './order/order.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    // ✅ 1. Імпорт ConfigModule
+    ConfigModule.forRoot({
+      isGlobal: true, // робить доступним у всіх модулях без повторного імпорту
+    }),
+
+    // ✅ 2. TypeORM з використанням process.env
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: 'root',
-      database: 'bells',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true,
+      synchronize: process.env.NODE_ENV !== 'production', // у продакшені краще false
     }),
+
+    // ✅ 3. ServeStatic для завантажень
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'), // папка з файлами
-      serveRoot: '/uploads', // шлях доступу
+      rootPath: join(__dirname, '..', process.env.UPLOADS_PATH || 'uploads'),
+      serveRoot: '/uploads',
     }),
+
+    // Решта модулів
     AuthModule,
     CharacteristicsModule,
     FilesModule,
