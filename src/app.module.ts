@@ -35,7 +35,7 @@ import { BackTemplateModule } from './backTemplate/back-template.module';
     // ✅ 3. ServeStatic для завантажень
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', process.env.UPLOADS_PATH || 'uploads'),
-      serveRoot: '/uploads',
+      serveRoot: '/api/uploads',
     }),
 
     // Решта модулів
