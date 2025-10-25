@@ -10,7 +10,10 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  AnyFilesInterceptor,
+  FileFieldsInterceptor,
+} from '@nestjs/platform-express';
 import { OrderService } from './order.service';
 import {
   CreateOrderDto,
@@ -28,25 +31,33 @@ export class OrderController {
   @Public()
   @Post()
   @UseInterceptors(
-    FileFieldsInterceptor(
-      [
-        { name: 'originImage', maxCount: 50 },
-        { name: 'image', maxCount: 50 },
-      ],
-      {
-        storage: makeMulterStorage('orders'),
-      },
-    ),
+    AnyFilesInterceptor({ storage: makeMulterStorage('orders') }),
   )
   async create(
     @Body() createOrderDto: CreateOrderDto,
-    @UploadedFiles()
-    files: {
-      originImage?: Express.Multer.File[];
-      image?: Express.Multer.File[];
-    },
+    @UploadedFiles() uploadedFiles: Express.Multer.File[],
   ): Promise<Order> {
-    return await this.orderService.create(createOrderDto, files);
+    // Групуємо файли за ключами типу "originImage[0]"
+    const filesMap = uploadedFiles.reduce(
+      (acc, file) => {
+        const match = file.fieldname.match(/^(\w+)\[(\d+)\]$/);
+        if (match) {
+          const [, key, indexStr] = match;
+          const index = Number(indexStr);
+          if (!acc[key]) acc[key] = [];
+          acc[key][index] = file;
+        }
+        return acc;
+      },
+      {} as Record<string, Express.Multer.File[]>,
+    );
+
+    return await this.orderService.create(createOrderDto, {
+      originImage: filesMap['originImage'],
+      image: filesMap['image'],
+      backOriginImage: filesMap['backOriginImage'],
+      backImage: filesMap['backImage'],
+    });
   }
 
   @Get()

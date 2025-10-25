@@ -12,6 +12,11 @@ import {
 import { Type } from 'class-transformer';
 import { OrderStatus } from '../enums/order-status.enum';
 
+export enum BackSideType {
+  TEMPLATE = 'template',
+  CUSTOM = 'custom',
+}
+
 export class CreateOrderItemDto {
   @IsNumber()
   @Min(1)
@@ -20,9 +25,22 @@ export class CreateOrderItemDto {
   @IsObject()
   characteristics: Record<string, string>;
 
-  // Файли будуть оброблені через multer
+  // Front side files
   originImage?: any;
   image?: any;
+
+  // Back side configuration
+  @IsEnum(BackSideType)
+  @IsOptional()
+  backSideType?: BackSideType;
+
+  @IsString()
+  @IsOptional()
+  backTemplateId?: string;
+
+  // Back side files (якщо backSideType = CUSTOM)
+  backOriginImage?: any;
+  backImage?: any;
 }
 
 export class CreateOrderDto {
@@ -32,7 +50,7 @@ export class CreateOrderDto {
 
   @IsString()
   @IsNotEmpty()
-  phone: string;
+  email: string;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -52,7 +70,7 @@ export class OrderQueryDto {
 
   @IsOptional()
   @IsString()
-  phone?: string;
+  email?: string;
 
   @IsOptional()
   @IsNumber()

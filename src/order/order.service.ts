@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
-import { OrderItem } from './entities/order-item.entity';
+import { OrderItem, BackSideType } from './entities/order-item.entity';
 import {
   CreateOrderDto,
   OrderQueryDto,
@@ -30,22 +30,21 @@ export class OrderService {
     files: {
       originImage?: Express.Multer.File[];
       image?: Express.Multer.File[];
+      backOriginImage?: Express.Multer.File[];
+      backImage?: Express.Multer.File[];
     },
   ): Promise<Order> {
-    // Розраховуємо загальну кількість товарів
     const totalQuantity = createOrderDto.items.reduce(
       (sum, item) => sum + item.quantity,
       0,
     );
 
-    // Отримуємо розрахунок ціни зі знижкою
     const priceCalculation =
       await this.priceService.calculatePrice(totalQuantity);
 
-    // Створюємо замовлення
     const order = this.orderRepository.create({
       name: createOrderDto.name,
-      phone: createOrderDto.phone,
+      email: createOrderDto.email,
       status: OrderStatus.CREATED,
       pricePerUnit: priceCalculation.basePrice,
       totalPrice: priceCalculation.totalPrice,
@@ -56,7 +55,6 @@ export class OrderService {
 
     const savedOrder = await this.orderRepository.save(order);
 
-    // Створюємо items
     const orderItems: OrderItem[] = [];
 
     for (let i = 0; i < createOrderDto.items.length; i++) {
@@ -64,6 +62,7 @@ export class OrderService {
 
       const orderItem = new OrderItem();
       orderItem.quantity = itemDto.quantity;
+
       if (typeof itemDto.characteristics === 'string') {
         try {
           orderItem.characteristics = JSON.parse(itemDto.characteristics);
@@ -73,7 +72,10 @@ export class OrderService {
       } else {
         orderItem.characteristics = itemDto.characteristics;
       }
+
       orderItem.orderId = savedOrder.id;
+
+      // Front side images
       if (files.originImage?.[i]) {
         const originImagePath = pathRelativeToUploads(
           files.originImage[i].path,
@@ -82,8 +84,27 @@ export class OrderService {
           this.filesService.buildFileUrl(originImagePath);
       }
       if (files.image?.[i]) {
-        const originImagePath = pathRelativeToUploads(files.image[i].path);
-        orderItem.imagePath = this.filesService.buildFileUrl(originImagePath);
+        const imagePath = pathRelativeToUploads(files.image[i].path);
+        orderItem.imagePath = this.filesService.buildFileUrl(imagePath);
+      }
+
+      const backSideType = itemDto.backSideType || BackSideType.TEMPLATE;
+      orderItem.backSideType = backSideType;
+      if (backSideType === BackSideType.TEMPLATE) {
+        orderItem.backTemplateId = itemDto.backTemplateId || null;
+      } else {
+        if (files.backOriginImage?.[i]) {
+          const backOriginImagePath = pathRelativeToUploads(
+            files.backOriginImage[i].path,
+          );
+          orderItem.backOriginImagePath =
+            this.filesService.buildFileUrl(backOriginImagePath);
+        }
+        if (files.backImage?.[i]) {
+          const backImagePath = pathRelativeToUploads(files.backImage[i].path);
+          orderItem.backImagePath =
+            this.filesService.buildFileUrl(backImagePath);
+        }
       }
 
       orderItems.push(orderItem);
@@ -97,7 +118,7 @@ export class OrderService {
   async findAll(
     query: OrderQueryDto,
   ): Promise<{ data: Order[]; total: number; page: number; limit: number }> {
-    const { status, phone, page = 1, limit = 10 } = query;
+    const { status, email, page = 1, limit = 10 } = query;
 
     const queryBuilder = this.orderRepository
       .createQueryBuilder('order')
@@ -108,8 +129,8 @@ export class OrderService {
       queryBuilder.andWhere('order.status = :status', { status });
     }
 
-    if (phone) {
-      queryBuilder.andWhere('order.phone LIKE :phone', { phone: `%${phone}%` });
+    if (email) {
+      queryBuilder.andWhere('order.email LIKE :email', { email: `%${email}%` });
     }
 
     const [data, total] = await queryBuilder
@@ -153,23 +174,19 @@ export class OrderService {
   async remove(id: string): Promise<void> {
     const order = await this.findOne(id);
 
-    // Видаляємо файли фото
     for (const item of order.items) {
-      if (item.originImagePath) {
+      const filesToDelete = [
+        item.originImagePath,
+        item.imagePath,
+        item.backOriginImagePath,
+        item.backImagePath,
+      ].filter(Boolean);
+
+      for (const filePath of filesToDelete) {
         try {
-          await fs.unlink(item.originImagePath);
+          await fs.unlink(filePath);
         } catch (error) {
-          console.error(
-            `Помилка видалення файлу: ${item.originImagePath}`,
-            error,
-          );
-        }
-      }
-      if (item.imagePath) {
-        try {
-          await fs.unlink(item.imagePath);
-        } catch (error) {
-          console.error(`Помилка видалення файлу: ${item.imagePath}`, error);
+          console.error(`Помилка видалення файлу: ${filePath}`, error);
         }
       }
     }

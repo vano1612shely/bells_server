@@ -18,7 +18,7 @@ export class Order {
   name: string;
 
   @Column()
-  phone: string;
+  email: string;
 
   @Column({
     type: 'enum',

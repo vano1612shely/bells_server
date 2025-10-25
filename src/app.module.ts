@@ -11,6 +11,7 @@ import { DiscountModule } from './discount/discount.module';
 import { PriceModule } from './price/price.module';
 import { OrderModule } from './order/order.module';
 import { ConfigModule } from '@nestjs/config';
+import { BackTemplateModule } from './backTemplate/back-template.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ConfigModule } from '@nestjs/config';
     DiscountModule,
     PriceModule,
     OrderModule,
+    BackTemplateModule,
   ],
   controllers: [AppController],
   providers: [AppService],
