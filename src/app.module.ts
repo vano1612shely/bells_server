@@ -29,7 +29,7 @@ import { BackTemplateModule } from './backTemplate/back-template.module';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: process.env.NODE_ENV !== 'production', // у продакшені краще false
+      synchronize: true, // у продакшені краще false
     }),
 
     // ✅ 3. ServeStatic для завантажень
