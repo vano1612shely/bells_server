@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OrderStatus } from '../enums/order-status.enum';
+import { DeliveryDto } from './delivery.dto';
 
 export enum BackSideType {
   TEMPLATE = 'template',
@@ -42,7 +43,6 @@ export class CreateOrderItemDto {
   backOriginImage?: any;
   backImage?: any;
 }
-
 export class CreateOrderDto {
   @IsString()
   @IsNotEmpty()
@@ -56,6 +56,10 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
   items: CreateOrderItemDto[];
+
+  @ValidateNested()
+  @Type(() => DeliveryDto)
+  delivery: DeliveryDto;
 }
 
 export class UpdateOrderStatusDto {

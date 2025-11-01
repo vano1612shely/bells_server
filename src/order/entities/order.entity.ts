@@ -5,9 +5,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  OneToOne,
+  JoinColumn,
 } from 'typeorm';
 import { OrderStatus } from '../enums/order-status.enum';
 import { OrderItem } from './order-item.entity';
+import { Delivery } from './delivery.entity';
 
 @Entity('orders')
 export class Order {
@@ -44,6 +47,10 @@ export class Order {
 
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];
+
+  @OneToOne(() => Delivery, { cascade: true, eager: true })
+  @JoinColumn()
+  delivery: Delivery;
 
   @CreateDateColumn()
   createdAt: Date;

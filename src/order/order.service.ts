@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem, BackSideType } from './entities/order-item.entity';
+import { Delivery } from './entities/delivery.entity';
 import {
   CreateOrderDto,
   OrderQueryDto,
@@ -19,12 +20,20 @@ export class OrderService {
   constructor(
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+
     @InjectRepository(OrderItem)
     private orderItemRepository: Repository<OrderItem>,
+
+    @InjectRepository(Delivery)
+    private deliveryRepository: Repository<Delivery>,
+
     private priceService: PriceService,
     private filesService: FilesService,
   ) {}
 
+  /**
+   * Створення нового замовлення з товарами і доставкою
+   */
   async create(
     createOrderDto: CreateOrderDto,
     files: {
@@ -34,14 +43,45 @@ export class OrderService {
       backImage?: Express.Multer.File[];
     },
   ): Promise<Order> {
+    // 🧮 Виправлення проблеми складання рядків: Number()
     const totalQuantity = createOrderDto.items.reduce(
-      (sum, item) => sum + item.quantity,
+      (sum, item) => sum + Number(item.quantity || 0),
       0,
     );
 
     const priceCalculation =
       await this.priceService.calculatePrice(totalQuantity);
 
+    // 🏠 Формування даних доставки
+    const delivery = new Delivery();
+    delivery.type = createOrderDto.delivery.type;
+
+    if (delivery.type === 'home' && createOrderDto.delivery.address) {
+      const addr = createOrderDto.delivery.address;
+      delivery.name = addr.name;
+      delivery.street = addr.street;
+      delivery.additional = addr.additional;
+      delivery.postalCode = addr.postalCode;
+      delivery.city = addr.city;
+      delivery.phone = addr.phone;
+    } else if (delivery.type === 'relay' && createOrderDto.delivery.relay) {
+      const relay = createOrderDto.delivery.relay;
+      delivery.relayPhone = relay.phone;
+
+      if (relay.point) {
+        // Якщо приходить JSON як рядок із FormData — розпарсимо
+        delivery.relayPoint =
+          typeof relay.point === 'string'
+            ? JSON.parse(relay.point)
+            : relay.point;
+      } else {
+        delivery.relayPoint = null;
+      }
+    }
+
+    await this.deliveryRepository.save(delivery);
+
+    // 💾 Створюємо замовлення
     const order = this.orderRepository.create({
       name: createOrderDto.name,
       email: createOrderDto.email,
@@ -51,18 +91,21 @@ export class OrderService {
       discount: priceCalculation.discount,
       totalPriceWithDiscount: priceCalculation.totalPriceWithDiscount,
       totalQuantity,
+      delivery,
     });
 
     const savedOrder = await this.orderRepository.save(order);
 
+    // 🧩 Обробка товарів
     const orderItems: OrderItem[] = [];
 
     for (let i = 0; i < createOrderDto.items.length; i++) {
       const itemDto = createOrderDto.items[i];
-
       const orderItem = new OrderItem();
-      orderItem.quantity = itemDto.quantity;
 
+      orderItem.quantity = Number(itemDto.quantity);
+
+      // 🧾 Характеристики
       if (typeof itemDto.characteristics === 'string') {
         try {
           orderItem.characteristics = JSON.parse(itemDto.characteristics);
@@ -75,7 +118,7 @@ export class OrderService {
 
       orderItem.orderId = savedOrder.id;
 
-      // Front side images
+      // 🖼️ Передня сторона
       if (files.originImage?.[i]) {
         const originImagePath = pathRelativeToUploads(
           files.originImage[i].path,
@@ -88,8 +131,10 @@ export class OrderService {
         orderItem.imagePath = this.filesService.buildFileUrl(imagePath);
       }
 
+      // 🔙 Задня сторона
       const backSideType = itemDto.backSideType || BackSideType.TEMPLATE;
       orderItem.backSideType = backSideType;
+
       if (backSideType === BackSideType.TEMPLATE) {
         orderItem.backTemplateId = itemDto.backTemplateId || null;
       } else {
@@ -115,6 +160,9 @@ export class OrderService {
     return this.findOne(savedOrder.id);
   }
 
+  /**
+   * Повертає список усіх замовлень із пагінацією
+   */
   async findAll(
     query: OrderQueryDto,
   ): Promise<{ data: Order[]; total: number; page: number; limit: number }> {
@@ -123,33 +171,28 @@ export class OrderService {
     const queryBuilder = this.orderRepository
       .createQueryBuilder('order')
       .leftJoinAndSelect('order.items', 'items')
+      .leftJoinAndSelect('order.delivery', 'delivery')
       .orderBy('order.createdAt', 'DESC');
 
-    if (status) {
-      queryBuilder.andWhere('order.status = :status', { status });
-    }
-
-    if (email) {
+    if (status) queryBuilder.andWhere('order.status = :status', { status });
+    if (email)
       queryBuilder.andWhere('order.email LIKE :email', { email: `%${email}%` });
-    }
 
     const [data, total] = await queryBuilder
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
 
-    return {
-      data,
-      total,
-      page,
-      limit,
-    };
+    return { data, total, page, limit };
   }
 
+  /**
+   * Повертає одне замовлення з усіма товарами і доставкою
+   */
   async findOne(id: string): Promise<Order> {
     const order = await this.orderRepository.findOne({
       where: { id },
-      relations: ['items'],
+      relations: ['items', 'delivery'],
     });
 
     if (!order) {
@@ -159,18 +202,22 @@ export class OrderService {
     return order;
   }
 
+  /**
+   * Оновлює статус замовлення
+   */
   async updateStatus(
     id: string,
     updateStatusDto: UpdateOrderStatusDto,
   ): Promise<Order> {
     const order = await this.findOne(id);
-
     order.status = updateStatusDto.status;
     await this.orderRepository.save(order);
-
     return this.findOne(id);
   }
 
+  /**
+   * Видаляє замовлення і всі пов'язані файли
+   */
   async remove(id: string): Promise<void> {
     const order = await this.findOne(id);
 

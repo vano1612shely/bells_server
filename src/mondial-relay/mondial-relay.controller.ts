@@ -1,7 +1,6 @@
 // src/mondial-relay/mondial-relay.controller.ts
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { MondialRelayService } from './mondial-relay.service';
-import { FindPointsDto } from './dto/find-points.dto';
 import { Public } from '../auth/guards/public.decorator';
 
 @Controller('mondial-relay')
@@ -10,15 +9,14 @@ export class MondialRelayController {
 
   @Public()
   @Get('points')
-  async getPickupPoints(@Query() query: FindPointsDto) {
-    const { postalCode, address, country } = query;
-    if (!postalCode && !address) {
-      throw new BadRequestException('postalCode or address is required');
+  async getPickupPoints(
+    @Query('q') q?: string,
+    @Query('country') country = 'FR',
+  ) {
+    if (!q) {
+      throw new BadRequestException('Parameter "q" is required');
     }
-    return this.mondialRelayService.findPickupPoints({
-      postalCode,
-      address,
-      country,
-    });
+
+    return this.mondialRelayService.findPickupPoints({ query: q, country });
   }
 }
