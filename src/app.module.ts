@@ -12,6 +12,7 @@ import { PriceModule } from './price/price.module';
 import { OrderModule } from './order/order.module';
 import { ConfigModule } from '@nestjs/config';
 import { BackTemplateModule } from './backTemplate/back-template.module';
+import { MondialRelayModule } from './mondial-relay/mondial-relay.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { BackTemplateModule } from './backTemplate/back-template.module';
     PriceModule,
     OrderModule,
     BackTemplateModule,
+    MondialRelayModule,
   ],
   controllers: [AppController],
   providers: [AppService],
