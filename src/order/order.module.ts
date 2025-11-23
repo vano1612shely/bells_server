@@ -7,6 +7,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { PriceModule } from '../price/price.module';
 import { FilesModule } from '../files/files.module';
 import { Delivery } from './entities/delivery.entity';
+import { EmailService } from '../notifications/email.service';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { Delivery } from './entities/delivery.entity';
     FilesModule,
   ],
   controllers: [OrderController],
-  providers: [OrderService],
+  providers: [OrderService, EmailService],
   exports: [OrderService],
 })
 export class OrderModule {}

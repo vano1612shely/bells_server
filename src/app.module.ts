@@ -13,6 +13,7 @@ import { OrderModule } from './order/order.module';
 import { ConfigModule } from '@nestjs/config';
 import { BackTemplateModule } from './backTemplate/back-template.module';
 import { MondialRelayModule } from './mondial-relay/mondial-relay.module';
+import { PaypalModule } from './paypal/paypal.module';
 
 @Module({
   imports: [
@@ -36,7 +37,7 @@ import { MondialRelayModule } from './mondial-relay/mondial-relay.module';
     // ✅ 3. ServeStatic для завантажень
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', process.env.UPLOADS_PATH || 'uploads'),
-      serveRoot: '/api/uploads',
+      serveRoot: '/uploads',
     }),
 
     // Решта модулів
@@ -48,6 +49,7 @@ import { MondialRelayModule } from './mondial-relay/mondial-relay.module';
     OrderModule,
     BackTemplateModule,
     MondialRelayModule,
+    PaypalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

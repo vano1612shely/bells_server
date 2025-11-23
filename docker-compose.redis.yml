@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: bells-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: ['redis-server', '--save', '20', '1', '--loglevel', 'warning']
+    restart: unless-stopped
+
+volumes:
+  redis-data:

@@ -45,6 +45,15 @@ export class Order {
   @Column('int')
   totalQuantity: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  paypalOrderId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  paypalCaptureId: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  paidAt: Date | null;
+
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];
 

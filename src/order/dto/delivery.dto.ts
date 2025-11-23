@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsEnum, IsOptional, IsString, ValidateNested, IsObject } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class RelayPointDto {
@@ -80,6 +80,7 @@ export class RelayDeliveryDto {
   phone: string;
 
   @IsOptional()
+  @IsObject()
   @Transform(({ value }) => {
     try {
       return typeof value === 'string' ? JSON.parse(value) : value;
@@ -87,9 +88,7 @@ export class RelayDeliveryDto {
       return value;
     }
   })
-  @ValidateNested()
-  @Type(() => RelayPointDto)
-  point?: RelayPointDto;
+  point?: Record<string, any>;
 }
 
 export class DeliveryDto {

@@ -9,7 +9,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { OrderStatus } from '../enums/order-status.enum';
 import { DeliveryDto } from './delivery.dto';
 
@@ -23,6 +23,16 @@ export class CreateOrderItemDto {
   @Min(1)
   quantity: number;
 
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return {};
+      }
+    }
+    return value;
+  })
   @IsObject()
   characteristics: Record<string, string>;
 
