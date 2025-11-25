@@ -1,4 +1,5 @@
 import { IsString, IsOptional, IsInt, IsObject } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 
 export class CreateOptionDto {
@@ -14,6 +15,15 @@ export class CreateOptionDto {
   largeImageUrl?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    if (!value) return undefined;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  })
   @IsObject()
   metadata?: any;
 
