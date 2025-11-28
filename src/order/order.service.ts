@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   Logger,
   NotFoundException,
@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, Not, Repository } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Order } from './entities/order.entity';
 import { OrderItem, BackSideType } from './entities/order-item.entity';
 import { Delivery } from './entities/delivery.entity';
@@ -17,9 +19,11 @@ import {
 } from './dto/order.dto';
 import { PriceService } from '../price/price.service';
 import { OrderStatus } from './enums/order-status.enum';
-import { pathRelativeToUploads } from '../files/multer.util';
+import { getUploadsDir, pathRelativeToUploads } from '../files/multer.util';
 import { FilesService } from '../files/files.service';
 import { EmailService } from '../notifications/email.service';
+import PDFDocument from 'pdfkit';
+import type * as PDFKit from 'pdfkit';
 
 @Injectable()
 export class OrderService implements OnModuleInit, OnModuleDestroy {
@@ -221,6 +225,157 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     await this.orderRepository.save(order);
     return this.findOne(id);
   }
+
+  async generateOrderPdfBase64(
+    id: string,
+  ): Promise<{ file_name: string; file_content: string }> {
+    const order = await this.findOne(id);
+    const fontPath = this.getFontPath();
+
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const chunks: Buffer[] = [];
+
+    return await new Promise<{ file_name: string; file_content: string }>(
+      (resolve, reject) => {
+        doc.on('data', (chunk) =>
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+        );
+        doc.on('error', (err) => reject(err));
+        doc.on('end', () => {
+          const pdfBuffer = Buffer.concat(chunks);
+          resolve({
+            file_name: `order-${id}.pdf`,
+            file_content: pdfBuffer.toString('base64'),
+          });
+        });
+
+        void this.composeOrderPdf(doc, order, fontPath)
+          .then(() => doc.end())
+          .catch((err) => {
+            this.logger.error('Failed to build order PDF', err as Error);
+            doc.end();
+            reject(err);
+          });
+      },
+    );
+  }
+
+  private async composeOrderPdf(
+    doc: PDFKit.PDFDocument,
+    order: Order,
+    fontPath: string | null,
+  ) {
+    if (fontPath) {
+      doc.registerFont('NotoSans', fontPath);
+      doc.font('NotoSans');
+    }
+
+    const addSectionTitle = (title: string) => {
+      doc.moveDown(0.4);
+      doc.fontSize(13).fillColor('#111').text(title, { underline: true });
+      doc.moveDown(0.15);
+    };
+
+    const divider = () => {
+      const x = doc.page.margins.left;
+      const width =
+        doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      doc.moveTo(x, doc.y).lineTo(x + width, doc.y).stroke('#e5e7eb');
+      doc.moveDown(0.3);
+    };
+
+    doc.fontSize(18).fillColor('#111').text(`Order #${order.id}`);
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor('#555');
+    doc.text(`Created: ${new Date(order.createdAt).toLocaleString()}`);
+    doc.text(`Status: ${order.status}`);
+    doc.text(`Customer: ${order.name}`);
+    doc.text(`Email: ${order.email}`);
+
+    addSectionTitle('Summary');
+    doc.fontSize(11).fillColor('#222');
+    doc.text(`Total quantity: ${order.totalQuantity}`);
+    doc.text(`Price per unit: ${this.formatCurrency(order.pricePerUnit)}`);
+    doc.text(`Subtotal: ${this.formatCurrency(order.totalPrice)}`);
+    doc.text(`Discount: ${this.formatCurrency(order.discount)}`);
+    doc.text(`Total: ${this.formatCurrency(order.totalPriceWithDiscount)}`);
+
+    divider();
+
+    addSectionTitle('Delivery');
+    doc.fontSize(11);
+    doc.text(`Type: ${order.delivery.type}`);
+    if (order.delivery.type === 'home') {
+      doc.text(`Name: ${this.formatText(order.delivery.name)}`);
+      doc.text(`Street: ${this.formatText(order.delivery.street)}`);
+      doc.text(`Additional: ${this.formatText(order.delivery.additional)}`);
+      doc.text(`Postal code: ${this.formatText(order.delivery.postalCode)}`);
+      doc.text(`City: ${this.formatText(order.delivery.city)}`);
+      doc.text(`Phone: ${this.formatText(order.delivery.phone)}`);
+    } else {
+      doc.text(`Phone: ${this.formatText(order.delivery.relayPhone)}`);
+      const relay = order.delivery.relayPoint;
+      if (relay) {
+        doc.text(`Relay ID: ${this.formatText(relay.id)}`);
+        doc.text(`Address 1: ${this.formatText(relay.LgAdr1)}`);
+        if (relay.LgAdr2) doc.text(`Address 2: ${relay.LgAdr2}`);
+        if (relay.LgAdr3) doc.text(`Address 3: ${relay.LgAdr3}`);
+        if (relay.LgAdr4) doc.text(`Address 4: ${relay.LgAdr4}`);
+        doc.text(`City: ${this.formatText(relay.Ville || relay.city)}`);
+        doc.text(`Postal code: ${this.formatText(relay.CP || relay.cp)}`);
+        doc.text(`Country: ${this.formatText(relay.Pays)}`);
+      }
+    }
+
+    divider();
+
+    addSectionTitle('Items');
+    if (!order.items.length) {
+      doc.fontSize(11).text('No items found for this order.');
+      return;
+    }
+
+    for (let index = 0; index < order.items.length; index++) {
+      const item = order.items[index];
+      doc.fontSize(12).fillColor('#111').text(`Item ${index + 1}`);
+      doc
+        .fontSize(10)
+        .fillColor('#444')
+        .text(
+          `Qty: ${item.quantity} | Back: ${item.backSideType}${
+            item.backSideType === BackSideType.TEMPLATE
+              ? ` | Template: ${this.formatText(item.backTemplateId)}`
+              : ''
+          }`,
+        );
+
+      if (item.characteristics && Object.keys(item.characteristics).length) {
+        const characteristics = Object.entries(item.characteristics)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(' | ');
+        doc.text(`Characteristics: ${characteristics}`);
+      }
+
+      await this.insertImage(doc, 'Front (original)', item.originImagePath);
+      await this.insertImage(doc, 'Front (processed)', item.imagePath);
+
+      if (item.backSideType === BackSideType.CUSTOM) {
+        await this.insertImage(
+          doc,
+          'Back (original)',
+          item.backOriginImagePath,
+        );
+        await this.insertImage(
+          doc,
+          'Back (processed)',
+          item.backImagePath,
+        );
+      }
+
+      divider();
+    }
+  }
+
   async remove(id: string): Promise<void> {
     const order = await this.findOne(id);
 
@@ -305,4 +460,66 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
 
     return normalized.replace(/^\/+/, '');
   }
+
+  private async insertImage(
+    doc: PDFKit.PDFDocument,
+    label: string,
+    filePath?: string | null,
+  ) {
+    const buffer = await this.readImageBuffer(filePath);
+    if (!buffer) return;
+
+    doc.moveDown(0.25);
+    doc.fontSize(11).text(label);
+    doc.image(buffer, {
+      fit: [150, 150],
+    });
+  }
+
+  private async readImageBuffer(
+    filePath?: string | null,
+  ): Promise<Buffer | null> {
+    if (!filePath) return null;
+    const relativePath = this.toUploadsRelativePath(filePath);
+    if (!relativePath) return null;
+
+    const fullPath = path.join(getUploadsDir(), relativePath);
+    try {
+      return await fs.promises.readFile(fullPath);
+    } catch {
+      this.logger.warn(`Could not load image for PDF: ${fullPath}`);
+      return null;
+    }
+  }
+
+  private getFontPath(): string | null {
+    const fontPath = path.join(
+      process.cwd(),
+      'assets',
+      'fonts',
+      'NotoSans-Regular.ttf',
+    );
+    return fs.existsSync(fontPath) ? fontPath : null;
+  }
+
+  private formatCurrency(value: number | string): string {
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) return `${value}`;
+    return new Intl.NumberFormat('uk-UA', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+    }).format(numeric);
+  }
+
+  private formatText(value?: string | number | null): string {
+    if (value === null || value === undefined) return '-';
+    return String(value);
+  }
 }
+
+
+
+
+
+

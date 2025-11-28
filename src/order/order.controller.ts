@@ -10,10 +10,7 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import {
-  AnyFilesInterceptor,
-  FileFieldsInterceptor,
-} from '@nestjs/platform-express';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { OrderService } from './order.service';
 import {
   CreateOrderDto,
@@ -68,6 +65,11 @@ export class OrderController {
   @Get(':id')
   async findOne(@Param('id') id: string): Promise<Order> {
     return await this.orderService.findOne(id);
+  }
+
+  @Get(':id/pdf')
+  async downloadPdf(@Param('id') id: string) {
+    return await this.orderService.generateOrderPdfBase64(id);
   }
 
   @Patch(':id/status')
